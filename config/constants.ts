@@ -5,4 +5,18 @@ export const MAX_CHAT_HISTORY = 20;
 export const CONTEXT_MESSAGE_LIMIT = 5;
 export const MAX_MESSAGE_PREVIEW_LENGTH = 50;
 export const MAX_CONTEXT_MESSAGE_LENGTH = 300;
+export const TROLL_COMMENT_PROBABILITY = 0.10;
+export const REACTION_PROBABILITY = 0.15;
+
+// Доступные реакции (эмодзи) - только те, что поддерживает Telegram API
+export const AVAILABLE_REACTIONS = [
+  "👍", "👎", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱",
+  "🤬", "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "🕊", "🤡",
+  "🥱", "🥴", "😍", "🐳", "❤‍🔥", "🌚", "🌭", "💯", "🤣", "⚡",
+  "🍌", "🏆", "💔", "🤨", "😐", "🍓", "🍾", "💋", "🖕", "😈",
+  "😴", "😭", "🤓", "👻", "👨‍💻", "👀", "🎃", "🙈", "😇", "😨",
+  "🤝", "✍", "🤗", "🫡", "🎅", "🎄", "☃", "💅", "🤪", "🗿",
+  "🆒", "💘", "🙉", "🦄", "😘", "💊", "🙊", "😎", "👾", "🤷‍♂",
+  "🤷", "🤷‍♀", "😡"
+];
 

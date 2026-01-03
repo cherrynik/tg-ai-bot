@@ -41,8 +41,11 @@ telegramService.initialize().then(async () => {
     for (const chatIdStr of chats) {
       try {
         if (chatIdStr === config.targetChatId) {
-          await telegramService.sendMessage(chatIdStr, config.startupMessage);
-          console.log(`✅ Сообщение отправлено в чат ${chatIdStr}`);
+          await telegramService.sendMessage(
+            chatIdStr,
+            `✅ ${config.name} включён и готов к работе! 🚀`
+          );
+          console.log(`✅ Сообщение о запуске отправлено в чат ${chatIdStr}`);
         }
       } catch (error: any) {
         console.error(
@@ -51,6 +54,8 @@ telegramService.initialize().then(async () => {
         );
       }
     }
+  } else {
+    console.log("ℹ️  Бот ещё не добавлен в групповой чат. Добавьте бота в группу для начала работы.");
   }
 }).catch((error: Error) => {
   console.error("❌ Ошибка при получении информации о боте:", error);
@@ -79,4 +84,52 @@ telegramService.onError((error: Error) => {
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+// Обработка завершения процесса
+async function sendShutdownMessage() {
+  try {
+    const chats = chatStorage.loadChats();
+    if (chats.size > 0) {
+      console.log(`📤 Отправка сообщения об отключении в ${chats.size} чат(ов)...`);
+      for (const chatIdStr of chats) {
+        try {
+          if (chatIdStr === config.targetChatId) {
+            await telegramService.sendMessage(
+              chatIdStr,
+              `⚠️ ${config.name} отключён. Бот временно не работает.`
+            );
+            console.log(`✅ Сообщение об отключении отправлено в чат ${chatIdStr}`);
+          }
+        } catch (error: any) {
+          console.error(
+            `❌ Ошибка при отправке сообщения об отключении в чат ${chatIdStr}:`,
+            error.message || error
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error("❌ Ошибка при отправке сообщений об отключении:", error);
+  }
+}
+
+// Обработка сигналов завершения
+process.on("SIGINT", async () => {
+  console.log("\n⚠️  Получен сигнал SIGINT, отправляю сообщения об отключении...");
+  await sendShutdownMessage();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("\n⚠️  Получен сигнал SIGTERM, отправляю сообщения об отключении...");
+  await sendShutdownMessage();
+  process.exit(0);
+});
+
+// Обработка необработанных исключений
+process.on("uncaughtException", async (error) => {
+  console.error("❌ Uncaught Exception:", error);
+  await sendShutdownMessage();
+  process.exit(1);
 });

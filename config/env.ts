@@ -33,14 +33,14 @@ export function loadConfig(): BotConfig {
 
 export const OPENAI_CONFIG = {
   checkIfAddressed: {
-    model: "o1-mini" as OpenAI.Responses.ResponseCreateParamsNonStreaming["model"],
+    model: "gpt-4o-mini" as OpenAI.Chat.ChatModel,
   },
   transcription: {
     model: "whisper-1" as OpenAI.Audio.Transcriptions.TranscriptionCreateParamsNonStreaming["model"],
     language: "ru",
   },
   response: {
-    model: "o3" as OpenAI.Responses.ResponseCreateParamsNonStreaming["model"],
-    temperature: 0.3,
+    model: "gpt-4o-mini" as OpenAI.Chat.ChatModel,
+    temperature: 1.0,
   },
 } as const;

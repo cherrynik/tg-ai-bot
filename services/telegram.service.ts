@@ -46,6 +46,36 @@ export class TelegramService {
     return this.bot.sendMessage(chatId, text, options);
   }
 
+  async sendChatAction(
+    chatId: string,
+    action: TelegramBot.ChatAction
+  ): Promise<boolean> {
+    return this.bot.sendChatAction(chatId, action);
+  }
+
+  async setMessageReaction(
+    chatId: string,
+    messageId: number,
+    reaction: string[]
+  ): Promise<boolean> {
+    try {
+      const reactionTypes: TelegramBot.ReactionType[] = reaction.map(
+        (emoji) =>
+          ({
+            type: "emoji",
+            emoji: emoji as TelegramBot.TelegramEmoji,
+          }) as TelegramBot.ReactionTypeEmoji
+      );
+      await this.bot.setMessageReaction(chatId, messageId, {
+        reaction: reactionTypes,
+      });
+      return true;
+    } catch (error) {
+      console.error("Ошибка при установке реакции:", error);
+      return false;
+    }
+  }
+
   onMessage(
     callback: (msg: Message) => void | Promise<void>
   ): void {
