@@ -43,7 +43,25 @@ export class TelegramService {
     text: string,
     options?: TelegramBot.SendMessageOptions
   ): Promise<TelegramBot.Message> {
-    return this.bot.sendMessage(chatId, text, options);
+    try {
+      return await this.bot.sendMessage(chatId, text, options);
+    } catch (error: any) {
+      // Если ошибка парсинга Markdown, отправляем без форматирования
+      if (
+        error.response?.body?.error_code === 400 &&
+        (error.response?.body?.description?.includes("parse") ||
+          error.response?.body?.description?.includes("Can't find end of the entity") ||
+          error.response?.body?.description?.includes("can't parse entities"))
+      ) {
+        console.log(`⚠️  Ошибка парсинга Markdown, отправляю без форматирования...`);
+        const fallbackOptions: TelegramBot.SendMessageOptions = {
+          ...options,
+          parse_mode: undefined,
+        };
+        return await this.bot.sendMessage(chatId, text, fallbackOptions);
+      }
+      throw error;
+    }
   }
 
   async sendChatAction(
@@ -74,6 +92,101 @@ export class TelegramService {
       console.error("Ошибка при установке реакции:", error);
       return false;
     }
+  }
+
+  async getChatAdministrators(chatId: string): Promise<TelegramBot.ChatMember[] | null> {
+    try {
+      return await this.bot.getChatAdministrators(chatId);
+    } catch (error) {
+      console.error("Ошибка при получении администраторов чата:", error);
+      return null;
+    }
+  }
+
+  async getChatMember(chatId: string, userId: number): Promise<TelegramBot.ChatMember | null> {
+    try {
+      return await this.bot.getChatMember(chatId, userId);
+    } catch (error) {
+      console.error(`Ошибка при получении информации о пользователе ${userId}:`, error);
+      return null;
+    }
+  }
+
+  getAllUsersFromHistory(chatId: string): Map<number, TelegramBot.User> {
+    const userMap = new Map<number, TelegramBot.User>();
+    const chatHistory = this.getChatHistory(chatId);
+    
+    for (const message of chatHistory) {
+      if (message.from) {
+        if (!userMap.has(message.from.id)) {
+          userMap.set(message.from.id, message.from);
+        }
+      }
+      if (message.reply_to_message?.from) {
+        if (!userMap.has(message.reply_to_message.from.id)) {
+          userMap.set(message.reply_to_message.from.id, message.reply_to_message.from);
+        }
+      }
+      // Также собираем упомянутых пользователей
+      const mentionedUsers = this.extractMentionedUsers(message);
+      for (const user of mentionedUsers) {
+        if (!userMap.has(user.id)) {
+          userMap.set(user.id, user);
+        }
+      }
+    }
+    
+    return userMap;
+  }
+
+  async enrichUserInfo(
+    chatId: string,
+    user: TelegramBot.User
+  ): Promise<TelegramBot.User> {
+    try {
+      const chatMember = await this.getChatMember(chatId, user.id);
+      if (chatMember && chatMember.user) {
+        // Объединяем информацию из сообщения и из getChatMember
+        return {
+          ...user,
+          ...chatMember.user,
+          // Предпочитаем более полную информацию из getChatMember
+          first_name: chatMember.user.first_name || user.first_name,
+          last_name: chatMember.user.last_name || user.last_name,
+          username: chatMember.user.username || user.username,
+        };
+      }
+    } catch (error) {
+      // Игнорируем ошибки
+    }
+    return user;
+  }
+
+  async getChatMembersCount(chatId: string): Promise<number | null> {
+    try {
+      return await this.bot.getChatMemberCount(chatId);
+    } catch (error) {
+      console.error("Ошибка при получении количества участников чата:", error);
+      return null;
+    }
+  }
+
+  extractMentionedUsers(msg: Message): TelegramBot.User[] {
+    const mentionedUsers: TelegramBot.User[] = [];
+    
+    if (!msg.entities) {
+      return mentionedUsers;
+    }
+
+    for (const entity of msg.entities) {
+      if (entity.type === "mention" && entity.user) {
+        mentionedUsers.push(entity.user);
+      } else if (entity.type === "text_mention" && entity.user) {
+        mentionedUsers.push(entity.user);
+      }
+    }
+
+    return mentionedUsers;
   }
 
   onMessage(

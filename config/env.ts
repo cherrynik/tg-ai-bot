@@ -41,6 +41,6 @@ export const OPENAI_CONFIG = {
   },
   response: {
     model: "gpt-4o-mini" as OpenAI.Chat.ChatModel,
-    temperature: 1.0,
+    temperature: 0.7,
   },
 } as const;

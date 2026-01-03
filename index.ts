@@ -2,6 +2,7 @@ import { loadConfig } from "./config/env.js";
 import { TelegramService } from "./services/telegram.service.js";
 import { OpenAIService } from "./services/openai.service.js";
 import { ChatStorageService } from "./services/chat-storage.service.js";
+import { UserStorageService } from "./services/user-storage.service.js";
 import { MessageHandler } from "./handlers/message.handler.js";
 import { MemberHandler } from "./handlers/member.handler.js";
 import type { Message } from "./types/message.types.js";
@@ -11,15 +12,18 @@ const config = loadConfig();
 const telegramService = new TelegramService(config);
 const openaiService = new OpenAIService(config.openaiApiKey);
 const chatStorage = new ChatStorageService(config);
+const userStorage = new UserStorageService(config);
 const messageHandler = new MessageHandler(
   telegramService,
   openaiService,
   chatStorage,
+  userStorage,
   config
 );
 const memberHandler = new MemberHandler(
   telegramService,
   chatStorage,
+  userStorage,
   config
 );
 

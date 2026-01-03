@@ -2,6 +2,7 @@ import type { Message, ConversationMessage } from "../types/message.types.js";
 import type { TelegramService } from "../services/telegram.service.js";
 import type { OpenAIService } from "../services/openai.service.js";
 import type { ChatStorageService } from "../services/chat-storage.service.js";
+import type { UserStorageService } from "../services/user-storage.service.js";
 import type { BotConfig } from "../types/config.types.js";
 import {
   createAddressCheckPrompt,
@@ -33,6 +34,7 @@ export class MessageHandler {
     private telegramService: TelegramService,
     private openaiService: OpenAIService,
     private chatStorage: ChatStorageService,
+    private userStorage: UserStorageService,
     private config: BotConfig
   ) {}
 
@@ -70,6 +72,18 @@ export class MessageHandler {
   ): Promise<void> {
     this.chatStorage.saveChat(chatId);
     this.telegramService.addMessageToHistory(chatId, msg);
+
+    // Сохраняем информацию о пользователях из сообщения
+    if (msg.from) {
+      this.userStorage.saveUser(msg.from);
+    }
+    if (msg.reply_to_message?.from) {
+      this.userStorage.saveUser(msg.reply_to_message.from);
+    }
+    const mentionedUsers = this.telegramService.extractMentionedUsers(msg);
+    for (const user of mentionedUsers) {
+      this.userStorage.saveUser(user);
+    }
 
     // Случайная реакция на сообщение (только если это не сообщение бота)
     if (
@@ -234,7 +248,7 @@ export class MessageHandler {
       const contextMessages = this.buildContextMessages(msg, chatId);
       const mainReplyMessage = msg.reply_to_message?.text;
       const chatInfo = getChatInfo(msg);
-      const usersInfo = this.buildUsersInfo(msg, chatId);
+      const usersInfo = await this.buildUsersInfo(msg, chatId);
 
       const systemPrompt = createSystemPrompt(
         this.config.name,
@@ -317,31 +331,111 @@ export class MessageHandler {
     return contextMessages;
   }
 
-  private buildUsersInfo(msg: Message, chatId: string): string {
+  private async buildUsersInfo(msg: Message, chatId: string): Promise<string> {
     const userInfoMap = new Map<number, string>();
+
+    // Получаем всех сохранённых пользователей
+    const storedUsers = this.userStorage.getAllUsers();
+    for (const storedUser of storedUsers) {
+      if (!userInfoMap.has(storedUser.id)) {
+        const userInfo = `Имя: ${storedUser.firstName}${storedUser.lastName ? `, Фамилия: ${storedUser.lastName}` : ""}${storedUser.username ? `, Тэг: @${storedUser.username}` : ""}${storedUser.isBot !== undefined ? `, Бот: ${storedUser.isBot ? "Да" : "Нет"}` : ""}`;
+        userInfoMap.set(storedUser.id, userInfo);
+      }
+    }
+
+    // Получаем всех пользователей из истории сообщений и обогащаем информацию
+    const allUsersFromHistory = this.telegramService.getAllUsersFromHistory(chatId);
+    
+    // Добавляем всех пользователей из истории, обогащая информацию через API
+    for (const user of allUsersFromHistory.values()) {
+      if (!userInfoMap.has(user.id)) {
+        try {
+          const enrichedUser = await this.telegramService.enrichUserInfo(chatId, user);
+          this.userStorage.saveUser(enrichedUser);
+          userInfoMap.set(enrichedUser.id, formatUserInfoDetailed(enrichedUser));
+        } catch (error) {
+          userInfoMap.set(user.id, formatUserInfoDetailed(user));
+        }
+      }
+    }
+
+    // Пытаемся получить администраторов чата (если бот админ)
+    try {
+      const administrators = await this.telegramService.getChatAdministrators(chatId);
+      if (administrators) {
+        for (const admin of administrators) {
+          if (admin.user && !userInfoMap.has(admin.user.id)) {
+            userInfoMap.set(admin.user.id, formatUserInfoDetailed(admin.user));
+          }
+        }
+        console.log(`👑 Добавлена информация о ${administrators.length} администраторах чата`);
+      }
+    } catch (error) {
+      // Игнорируем ошибки получения администраторов (бот может не быть админом)
+    }
+
+    // Получаем информацию о пользователях, упомянутых в сообщении по тэгу
+    const mentionedUsers = this.telegramService.extractMentionedUsers(msg);
+    for (const user of mentionedUsers) {
+      if (!userInfoMap.has(user.id)) {
+        // Пытаемся получить полную информацию о пользователе из чата
+        try {
+          const chatMember = await this.telegramService.getChatMember(chatId, user.id);
+          if (chatMember && chatMember.user) {
+            userInfoMap.set(chatMember.user.id, formatUserInfoDetailed(chatMember.user));
+          } else {
+            userInfoMap.set(user.id, formatUserInfoDetailed(user));
+          }
+        } catch (error) {
+          // Если не удалось получить полную информацию, используем базовую
+          userInfoMap.set(user.id, formatUserInfoDetailed(user));
+        }
+      }
+    }
 
     // Добавляем информацию о пользователе, на чье сообщение отвечают
     if (msg.reply_to_message?.from) {
       const user = msg.reply_to_message.from;
-      userInfoMap.set(user.id, formatUserInfoDetailed(user));
+      if (!userInfoMap.has(user.id)) {
+        // Пытаемся получить полную информацию о пользователе из чата
+        try {
+          const chatMember = await this.telegramService.getChatMember(chatId, user.id);
+          if (chatMember && chatMember.user) {
+            userInfoMap.set(chatMember.user.id, formatUserInfoDetailed(chatMember.user));
+          } else {
+            userInfoMap.set(user.id, formatUserInfoDetailed(user));
+          }
+        } catch (error) {
+          userInfoMap.set(user.id, formatUserInfoDetailed(user));
+        }
+      }
     }
 
     // Добавляем информацию о текущем пользователе
     if (msg.from) {
-      userInfoMap.set(msg.from.id, formatUserInfoDetailed(msg.from));
+      if (!userInfoMap.has(msg.from.id)) {
+        // Пытаемся получить полную информацию о пользователе из чата
+        try {
+          const chatMember = await this.telegramService.getChatMember(chatId, msg.from.id);
+          if (chatMember && chatMember.user) {
+            userInfoMap.set(chatMember.user.id, formatUserInfoDetailed(chatMember.user));
+          } else {
+            userInfoMap.set(msg.from.id, formatUserInfoDetailed(msg.from));
+          }
+        } catch (error) {
+          userInfoMap.set(msg.from.id, formatUserInfoDetailed(msg.from));
+        }
+      }
     }
 
-    // Собираем информацию о пользователях из истории сообщений
-    const chatHistory = this.telegramService.getChatHistory(chatId);
-    const recentMessages = chatHistory
-      .filter((m) => m.text && m.message_id !== msg.message_id)
-      .reverse()
-      .slice(0, CONTEXT_MESSAGE_LIMIT);
-
-    for (const m of recentMessages) {
-      if (m.from && !userInfoMap.has(m.from.id)) {
-        userInfoMap.set(m.from.id, formatUserInfoDetailed(m.from));
+    // Пытаемся получить количество участников для информации
+    try {
+      const membersCount = await this.telegramService.getChatMembersCount(chatId);
+      if (membersCount) {
+        console.log(`📊 Всего участников в чате: ${membersCount}, собрано информации о ${userInfoMap.size}`);
       }
+    } catch (error) {
+      // Игнорируем ошибки
     }
 
     if (userInfoMap.size === 0) {

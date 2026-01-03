@@ -1,12 +1,14 @@
 import type { Message } from "../types/message.types.js";
 import type { TelegramService } from "../services/telegram.service.js";
 import type { ChatStorageService } from "../services/chat-storage.service.js";
+import type { UserStorageService } from "../services/user-storage.service.js";
 import type { BotConfig } from "../types/config.types.js";
 
 export class MemberHandler {
   constructor(
     private telegramService: TelegramService,
     private chatStorage: ChatStorageService,
+    private userStorage: UserStorageService,
     private config: BotConfig
   ) {}
 
@@ -26,6 +28,11 @@ export class MemberHandler {
         );
         this.chatStorage.saveChat(chatId);
         
+        // Сохраняем информацию о новых участниках
+        for (const member of newMembers) {
+          this.userStorage.saveUser(member);
+        }
+        
         try {
           await this.telegramService.sendMessage(chatId, this.config.startupMessage);
           console.log(`✅ Приветствие отправлено в группу "${chatTitle}"`);
@@ -34,6 +41,13 @@ export class MemberHandler {
             `❌ Ошибка при отправке приветствия в "${chatTitle}":`,
             error.message || error
           );
+        }
+      } else {
+        // Сохраняем информацию о новых участниках (не бот)
+        for (const member of newMembers) {
+          if (member.id !== this.telegramService.botId) {
+            this.userStorage.saveUser(member);
+          }
         }
       }
     }
